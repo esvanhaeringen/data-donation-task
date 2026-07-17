@@ -25,7 +25,7 @@ module.exports = {
       error: "#DB1E1E",
       errorlight: "#FFECEC",
       black: "#000000",
-      grey1: "#222222",
+      grey1: "#333333",
       grey2: "#999999",
       grey3: "#CCCCCC",
       grey4: "#EEEEEE",

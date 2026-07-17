@@ -15,6 +15,7 @@ import {
 import UndoSvg from './assets/images/undo.svg'
 import DeleteSvg from './assets/images/delete.svg'
 import { Pagination } from './pagination'
+import { queryTerms } from './visualization_plugin/searchMatch'
 import TextBundle from '@eyra/feldspar'
 import { 
     Translator,
@@ -251,10 +252,7 @@ function Cell ({
   const [overflows, setOverflows] = useState(false)
   const isUrl = /^https?:\/\//.test(cell)
 
-  const searchWords = useMemo(() => {
-    return [search]
-    // return search.split(' ') // alternative: highlight individual words
-  }, [search])
+  const searchWords = useMemo(() => queryTerms(search), [search])
 
   useEffect(() => {
     if (textRef.current == null) return

@@ -1,38 +1,50 @@
-import { VisualizationData, ChartVisualizationData, TextVisualizationData, zTable, zVisualizationType } from './types'
+import { VisualizationData, ChartVisualizationData, TextVisualizationData, ConversationVisualizationData, CalendarVisualizationData, zTable, zVisualizationType } from './types'
 import { memo, useEffect, useMemo, useState } from 'react'
 
 import useVisualizationData from './visualizationDataFunctions/useVisualizationData'
 
 import RechartsGraph from './figures/recharts_graph'
 import VisxWordcloud from './figures/d3_wordcloud'
+import ChatConversation from './figures/chat_conversation'
+import CalendarHeatmap from './figures/calendar_heatmap'
 import { zoomInIcon, zoomOutIcon } from './zoom_icons'
 import { z } from 'zod'
 import { Loader } from './ui/loader'
 import { getTranslations, translate } from './translate'
 
-const doubleTypes = ['wordcloud']
+const doubleTypes = ['wordcloud', 'chat_conversation']
 type ShowStatus = 'hidden' | 'visible' | 'double'
 
 export interface FigureProps {
   tableInput: any
+  fullTableInput: any
+  search: string
+  onSearch: (search: string) => void
   visualizationInput: any
   locale: string
   handleDelete: (rowIds: string[]) => void
   handleUndo: () => void
+  handleClearMessage: (rowId: string) => void
 }
 
 export const Figure = ({
   tableInput,
+  fullTableInput,
+  search,
+  onSearch,
   visualizationInput,
   locale,
   handleDelete,
-  handleUndo
+  handleUndo,
+  handleClearMessage
 }: FigureProps): JSX.Element => {
   const tableValidator = useMemo(() => zTable.safeParse(tableInput), [tableInput])
+  const fullTableValidator = useMemo(() => zTable.safeParse(fullTableInput), [fullTableInput])
   const visualizationValidator = useMemo(() => zVisualizationType.safeParse(visualizationInput), [visualizationInput])
 
-  if (!tableValidator.success || !visualizationValidator.success) {
+  if (!tableValidator.success || !fullTableValidator.success || !visualizationValidator.success) {
     if (!tableValidator.success) console.error(tableValidator.error)
+    if (!fullTableValidator.success) console.error(fullTableValidator.error)
     if (!visualizationValidator.success) console.error(visualizationValidator.error)
     return <div />
   }
@@ -40,30 +52,51 @@ export const Figure = ({
   return (
     <FigureComponent
       table={tableValidator.data}
+      fullTable={fullTableValidator.data}
+      search={search}
+      onSearch={onSearch}
       visualization={visualizationValidator.data}
       locale={locale}
       handleDelete={handleDelete}
       handleUndo={handleUndo}
+      handleClearMessage={handleClearMessage}
     />
   )
 }
 
 export interface ValidatedFigureProps {
   table: z.infer<typeof zTable>
+  fullTable: z.infer<typeof zTable>
+  search: string
+  onSearch: (search: string) => void
   visualization: z.infer<typeof zVisualizationType>
   locale: string
   handleDelete: (rowIds: string[]) => void
   handleUndo: () => void
+  handleClearMessage: (rowId: string) => void
 }
 
 export const FigureComponent = ({
   table,
+  fullTable,
+  search,
+  onSearch,
   visualization,
   locale,
   handleDelete,
-  handleUndo
+  handleUndo,
+  handleClearMessage
 }: ValidatedFigureProps): JSX.Element => {
-  const [visualizationData, status] = useVisualizationData(table, visualization)
+  // The chat visualization filters conversations and highlights matches
+  // itself (see ChatConversation), rather than having non-matching rows
+  // dropped before it ever sees them, so it needs the full, unfiltered
+  // table. The calendar heatmap needs the same treatment: it's a navigation
+  // aid for the search box, not itself a filtered view, so selecting a date
+  // must not make every other date's cell go blank. Other visualization
+  // types keep relying on the pre-filtered table.
+  const selfFiltering = visualization.type === 'chat_conversation' || visualization.type === 'calendar_heatmap'
+  const effectiveTable = selfFiltering ? fullTable : table
+  const [visualizationData, status] = useVisualizationData(effectiveTable, visualization)
   const [longLoading, setLongLoading] = useState<boolean>(false)
   const [showStatus, setShowStatus] = useState<ShowStatus>('visible')
   const [resizeLoading, setResizeLoading] = useState<boolean>(false)
@@ -117,8 +150,7 @@ export const FigureComponent = ({
       <div className='w-full overflow-auto'>
         <div className='flex flex-col '>
           <div
-            // ref={ref}
-            className='grid relative z-50 w-full pr-1  min-w-[250px]'
+            className='grid relative w-full pr-1  min-w-[250px]'
             style={{ gridTemplateRows: String(height) + 'px' }}
           >
             <RenderVisualization
@@ -126,6 +158,10 @@ export const FigureComponent = ({
               fallbackMessage={noDataMsg}
               loading={resizeLoading}
               locale={locale}
+              search={search}
+              onSearch={onSearch}
+              handleDelete={handleDelete}
+              handleClearMessage={handleClearMessage}
             />
           </div>
         </div>
@@ -139,12 +175,20 @@ export const RenderVisualization = memo(
     visualizationData,
     fallbackMessage,
     loading,
-    locale
+    locale,
+    search,
+    onSearch,
+    handleDelete,
+    handleClearMessage
   }: {
     visualizationData: VisualizationData | undefined
     fallbackMessage: string
     loading: boolean
     locale: string
+    search: string
+    onSearch: (search: string) => void
+    handleDelete: (rowIds: string[]) => void
+    handleClearMessage: (rowId: string) => void
   }): JSX.Element | null => {
     if (visualizationData == null) return null
 
@@ -161,7 +205,19 @@ export const RenderVisualization = memo(
     if (visualizationData.type === 'wordcloud') {
       const textVisualizationData: TextVisualizationData = visualizationData
       if (textVisualizationData.topTerms.length === 0) return fallback
-      return <VisxWordcloud visualizationData={textVisualizationData} />
+      return <VisxWordcloud visualizationData={textVisualizationData} search={search} onSearch={onSearch} />
+    }
+
+    if (visualizationData.type === 'chat_conversation') {
+      const convData = visualizationData as ConversationVisualizationData
+      if (convData.conversations.length === 0) return fallback
+      return <ChatConversation visualizationData={convData} locale={locale} search={search} onSearch={onSearch} handleDelete={handleDelete} handleClearMessage={handleClearMessage} />
+    }
+
+    if (visualizationData.type === 'calendar_heatmap') {
+      const calendarData: CalendarVisualizationData = visualizationData
+      if (calendarData.counts.length === 0) return fallback
+      return <CalendarHeatmap visualizationData={calendarData} locale={locale} search={search} onSearch={onSearch} />
     }
 
     return null

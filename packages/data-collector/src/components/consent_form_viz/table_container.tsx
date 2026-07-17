@@ -11,7 +11,7 @@ import {
 import { TableItems } from "./table_items"
 import { Figure } from "./visualization_plugin/figure"
 import { Table } from "./table"
-import { SearchBar } from "./search_bar"
+import { matchesQuery, queryTerms } from "./visualization_plugin/searchMatch"
 
 interface TableContainerProps {
   id: string
@@ -75,6 +75,14 @@ export const TableContainer = ({ id, table, updateTable, locale }: TableContaine
     updateTable(id, newTable)
   }, [id, table])
 
+  const handleClearMessage = useCallback(
+    (rowId: string, visualization: any) => {
+      const newTable = clearMessageFields(table, rowId, visualization, text.removedMessage)
+      updateTable(id, newTable)
+    },
+    [id, table, text.removedMessage]
+  )
+
   const unfilteredRows = table.body.rows.length
 
   return (
@@ -85,10 +93,6 @@ export const TableContainer = ({ id, table, updateTable, locale }: TableContaine
       <div className="flex flex-wrap ">
         <div key="Title" className="flex sm:flex-row justify-between w-full gap-1 mb-2">
           <Title4 text={table.title} margin="" />
-
-          {unfilteredRows > 0 ? (
-            <SearchBar placeholder={text.searchPlaceholder} search={search} onSearch={setSearch} />
-          ) : null}
         </div>
         <div key="Description" className="flex flex-col w-full mb-2 text-base md:text-lg font-body max-w-2xl">
           <p>{table.description}</p>
@@ -128,22 +132,51 @@ export const TableContainer = ({ id, table, updateTable, locale }: TableContaine
             tableVisualizations.length > 0 && unfilteredRows > 0 ? "" : "hidden"
           }`}
         >
-          {tableVisualizations.map((vs: any, i: number) => {
-            return (
-              <Figure
-                key={table.id + "_" + String(i)}
-                tableInput={searchedTable}
-                visualizationInput={vs}
-                locale={locale}
-                handleDelete={handleDelete}
-                handleUndo={handleUndo}
-              />
-            )
-          })}
+          {groupVisualizations(tableVisualizations).map((group, groupIndex) => (
+            <div key={groupIndex} className="min-[1000px]:flex lg:flex-row flex-wrap gap-4">
+              {group.map((vs: any, i: number) => (
+                <div key={i} className="flex-1 min-w-[280px]">
+                  <Figure
+                    key={table.id + "_" + String(groupIndex) + "_" + String(i)}
+                    tableInput={searchedTable}
+                    fullTableInput={table}
+                    search={search}
+                    onSearch={setSearch}
+                    visualizationInput={vs}
+                    locale={locale}
+                    handleDelete={handleDelete}
+                    handleUndo={handleUndo}
+                    handleClearMessage={(rowId) => handleClearMessage(rowId, vs)}
+                  />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>
   )
+}
+
+// Groups *consecutive* visualizations that share the same (non-null) `row`
+// config value into one responsive flex row (see the className above:
+// stacked below `lg`, side by side from `lg` up), so platform configs opt
+// in per-visualization by giving siblings a matching "row" number - see
+// e.g. chatgpt.py's calendar_heatmap/wordcloud pair. Anything without a
+// `row`, or whose `row` differs from its neighbor, gets its own group and
+// renders exactly as before (full width, on its own row).
+function groupVisualizations(visualizations: any[]): any[][] {
+  const groups: any[][] = []
+  for (const vs of visualizations) {
+    const currentGroup = groups[groups.length - 1]
+    const previous = currentGroup?.[0]
+    if (vs.row != null && previous?.row === vs.row) {
+      currentGroup.push(vs)
+    } else {
+      groups.push([vs])
+    }
+  }
+  return groups
 }
 
 function deleteTableRows(table: TableWithContext, deletedRows: string[][]): TableWithContext {
@@ -164,32 +197,54 @@ function deleteTableRows(table: TableWithContext, deletedRows: string[][]): Tabl
   }
 }
 
-function searchRows(rows: PropsUITableRow[], search: string): Set<string> | undefined {
-  if (search.trim() === "") return undefined
+// Clears every cell of the row identified by rowId, except the columns named
+// by visualization.idColumn, visualization.reactionToColumn,
+// visualization.titleColumn and visualization.roleColumn (so the row stays 
+// anchored in its conversation). The messageColumn cell is replaced with 
+// removedMessageText instead of being blanked, so it's clear in the UI that 
+// the message was intentionally removed.
+function clearMessageFields(
+  table: TableWithContext,
+  rowId: string,
+  visualization: any,
+  removedMessageText: string
+): TableWithContext {
+  const keptColumns = new Set<string>(
+    [visualization?.idColumn, visualization?.reactionToColumn, visualization?.titleColumn, visualization?.roleColumn].filter(Boolean)
+  )
+  const messageColumn = visualization?.messageColumn
 
-  // Not sure whether it's better to look for one of the words or exact string.
-  // Now going for exact string. Note that if you change this, you should also change
-  // the highlighting behavior in table.tsx (<Highlighter searchWords.../>)
-  // const query = search.trim().split(/\s+/)
-  const query = [search.trim()]
-
-  const regexes: RegExp[] = []
-  for (const q of query) {
-    regexes.push(new RegExp(q.replace(/[-/\\^$*+?.()|[\]{}]/, "\\$&"), "i"))
+  const clearRow = (row: PropsUITableRow): PropsUITableRow => {
+    if (row.id !== rowId) return row
+    const cells = table.head.cells.map((column, i) => {
+      if (keptColumns.has(column)) return row.cells[i]
+      if (column === messageColumn) return removedMessageText
+      return ""
+    })
+    return { ...row, cells }
   }
+
+  return {
+    ...table,
+    body: { ...table.body, rows: table.body.rows.map(clearRow) },
+    originalBody: { ...table.originalBody, rows: table.originalBody.rows.map(clearRow) },
+  }
+}
+
+function searchRows(rows: PropsUITableRow[], search: string): Set<string> | undefined {
+  // Delegates to the shared matchesQuery (AND-of-terms, substring match,
+  // plus its date-OR-group handling for multi-date calendar selections)
+  // rather than a separate regex implementation, so this stays consistent
+  // with every other search consumer (wordcloud, chat conversation, the
+  // calendar heatmap itself). Joining a row's cells with a newline before
+  // matching keeps "each term somewhere in the row, possibly in different
+  // cells" working the same as before, since a term can't accidentally
+  // span two cells across that separator.
+  if (queryTerms(search).length === 0) return undefined
 
   const ids = new Set<string>()
   for (const row of rows) {
-    for (const regex of regexes) {
-      let anyCellMatches = false
-      for (const cell of row.cells) {
-        if (regex.test(cell)) {
-          anyCellMatches = true
-          break
-        }
-      }
-      if (anyCellMatches) ids.add(row.id)
-    }
+    if (matchesQuery(row.cells.join('\n'), search)) ids.add(row.id)
   }
 
   return ids
@@ -240,7 +295,7 @@ function getTranslations(locale: string): Record<string, string> {
 }
 
 const translations = {
-  searchPlaceholder: new TextBundle().add("en", "Search").add("nl", "Zoeken"),
   showTable: new TextBundle().add("en", "Show table").add("nl", "Tabel tonen"),
   hideTable: new TextBundle().add("en", "Hide table").add("nl", "Tabel verbergen"),
+  removedMessage: new TextBundle().add("en", "<message is removed>").add("nl", "<bericht is verwijderd>"),
 }

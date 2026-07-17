@@ -1,6 +1,8 @@
-import { ChartVisualization, TextVisualization, VisualizationType, VisualizationData, Table } from '../types'
+import { ChartVisualization, TextVisualization, CalendarVisualization, VisualizationType, VisualizationData, Table } from '../types'
 import { prepareChartData } from './prepareChartData'
 import { prepareTextData } from './prepareTextData'
+import { prepareConversationData } from './prepareConversationData'
+import { prepareCalendarData } from './prepareCalendarData'
 
 interface Input {
   table: Table
@@ -24,6 +26,10 @@ async function createVisualizationData (table: Table, visualization: Visualizati
   if (['line', 'bar', 'area'].includes(visualization.type)) { return await prepareChartData(table, visualization as ChartVisualization) }
 
   if (['wordcloud'].includes(visualization.type)) { return await prepareTextData(table, visualization as TextVisualization) }
+
+  if (visualization.type === 'chat_conversation') { return await prepareConversationData(table, visualization) }
+
+  if (visualization.type === 'calendar_heatmap') { return await prepareCalendarData(table, visualization as CalendarVisualization) }
 
   throw new Error(`Visualization type ${visualization.type} not supported`)
 }
