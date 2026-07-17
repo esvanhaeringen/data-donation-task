@@ -67,7 +67,8 @@ export const Table = ({
     y: 0
   })
 
-  const cellClass = 'min-h-[2.1rem] md:min-h-[2.5rem] px-3 flex items-center font-table-row'
+  const cellClass = 'min-h-[2.1rem] md:min-h-[2.5rem] px-3 py-2 flex items-center font-table-row'
+  const headerCellClass = cellClass.replace('font-table-row', 'font-table-header')
 
   useEffect(() => {
     setSelected(new Set())
@@ -114,8 +115,8 @@ export const Table = ({
     // Display translated header if available, fall back to raw column name
     const displayName = table.headers?.[value] ?? value
     return (
-      <th key={`header ${i}`}>
-        <div className={`text-left ${cellClass}`}>
+      <th key={`header ${i}`} className='bg-grey5'>
+        <div className={`text-left ${headerCellClass}`}>
           <div>{displayName}</div>
         </div>
       </th>
@@ -124,9 +125,10 @@ export const Table = ({
 
   function renderRow (item: PropsUITableRow | null, i: number): JSX.Element | null {
     if (item == null && i >= unfilteredRows) return null
+    const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-grey5'
     if (item == null) {
       return (
-        <tr key={`{empty ${i}`} className='border-b-2 border-grey4'>
+        <tr key={`{empty ${i}`} className={`border-b-2 border-grey4 ${rowBg}`}>
           <td>
             <div className={cellClass} />
           </td>
@@ -134,7 +136,7 @@ export const Table = ({
       )
     }
     return (
-      <tr key={item.id} className='border-b-2 border-grey4 border-solid'>
+      <tr key={item.id} className={`border-b-2 border-grey4 border-solid ${rowBg}`}>
         {table.deleteOption &&
           (
             <td key='select'>
@@ -182,9 +184,9 @@ export const Table = ({
       <div ref={innerRef} className={`h-min ${unfilteredRows === 0 ? 'invisible' : ''}`}>
         <div className='my-2 bg-grey6 rounded-md border-grey4 border-[0.2rem]'>
           <div className='p-3 pt-1 pb-2 max-w-full overflow-x-auto'>
-            <table className='table-fixed min-w-full '>
+            <table className='table-auto w-full '>
               <thead className=''>
-                <tr className='border-b-2 border-grey4 border-solid'>
+                <tr className='border-b-2 border-grey3 border-solid'>
                   {table.deleteOption &&
                     (
                       <td className='w-8'>
@@ -248,23 +250,25 @@ function Cell ({
   setTooltip: Dispatch<SetStateAction<Tooltip>>
 }): JSX.Element {
   const textRef = useRef<HTMLDivElement>(null)
-  const [overflows, setOverflows] = useState(false)
   const isUrl = /^https?:\/\//.test(cell)
+
+  const maxChars = 150
+  const truncated = cell.length > maxChars
+  const displayText = truncated ? cell.slice(0, maxChars) + '…' : cell
+
+  // widen the cell enough to keep wrapped text within ~4 lines instead of growing taller;
+  // line-clamp-4 below is only a backstop for when there isn't enough horizontal room to honor this
+  const minWidthCh = Math.max(6, Math.ceil(displayText.length / 4))
 
   const searchWords = useMemo(() => {
     return [search]
     // return search.split(' ') // alternative: highlight individual words
   }, [search])
 
-  useEffect(() => {
-    if (textRef.current == null) return
-    setOverflows(textRef.current.scrollWidth > textRef.current.clientWidth)
-  }, [textRef])
-
   function onSetTooltip (): void {
     if (isUrl) return
+    if (!truncated) return
     if (textRef.current == null) return
-    if (!overflows) return
 
     const rect = textRef.current.getBoundingClientRect()
 
@@ -296,14 +300,18 @@ function Cell ({
       onMouseLeave={onRmTooltip}
       onClick={onSetTooltip}
     >
-      <div ref={textRef} className='whitespace-nowrap max-w-[15rem] overflow-hidden overflow-ellipsis z-10'>
+      <div
+        ref={textRef}
+        className={`whitespace-normal w-full z-10 line-clamp-4 overflow-hidden ${isUrl ? 'break-all' : 'break-words'}`}
+        style={{ minWidth: `${minWidthCh}ch` }}
+      >
         {isUrl
           ? (
             <a href={cell} className='text-primary' target='_blank' rel='noopener noreferrer'>
               <Highlighter
                 searchWords={searchWords}
                 autoEscape
-                textToHighlight={cell}
+                textToHighlight={displayText}
                 highlightClassName='bg-tertiary rounded-sm'
               />
             </a>
@@ -312,12 +320,12 @@ function Cell ({
             <Highlighter
               searchWords={searchWords}
               autoEscape
-              textToHighlight={cell}
+              textToHighlight={displayText}
               highlightClassName='bg-tertiary rounded-sm'
             />
             )}
       </div>
-      {overflows && !isUrl && <TooltipIcon />}
+      {truncated && !isUrl && <TooltipIcon />}
     </div>
   )
 }

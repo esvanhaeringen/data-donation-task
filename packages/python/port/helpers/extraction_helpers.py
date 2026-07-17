@@ -625,6 +625,11 @@ class ZipArchiveReader:
         self.archive = archive
         self.archive_members = archive_members
         self.errors = errors
+        # Per-instance caches so a member that is requested by several
+        # extractors (e.g. one shared user_data.json) is only read out of
+        # the zip and parsed once, instead of once per extractor.
+        self._member_bytes_cache: dict[str, bytes] = {}
+        self._json_cache: dict[str, JsonExtractionResult] = {}
 
     def resolve_member(self, filename: str) -> str | None:
         """Resolve a filename to an archive member path.
@@ -657,33 +662,56 @@ class ZipArchiveReader:
             return None
 
     def _read_member_bytes(self, member_path: str) -> io.BytesIO:
-        """Read a specific member from the zip by exact path."""
+        """Read a specific member from the zip by exact path.
+
+        Cached by resolved member path: several extractors commonly pull
+        from the same underlying file, so a repeat request is served from
+        memory instead of re-opening and re-decompressing the zip entry.
+        """
+        cached = self._member_bytes_cache.get(member_path)
+        if cached is not None:
+            return io.BytesIO(cached)
         try:
             with zipfile.ZipFile(self.archive, "r") as zf:
-                return io.BytesIO(zf.read(member_path))
+                raw = zf.read(member_path)
         except Exception as e:
             logger.error("Error reading zip member: %s", type(e).__name__)
             self.errors[type(e).__name__] += 1
             return io.BytesIO()
+        self._member_bytes_cache[member_path] = raw
+        return io.BytesIO(raw)
 
     def json(self, filename: str) -> JsonExtractionResult:
         """Extract and parse a JSON file.
 
         Returns JsonExtractionResult(found=False, data={}) if member
         not in archive. Skips JSON parsing entirely when not found.
+
+        Cached by filename: repeat calls (e.g. several extractors reading
+        one shared export file) return the already-parsed result instead
+        of re-parsing the JSON each time.
         """
+        cached = self._json_cache.get(filename)
+        if cached is not None:
+            return cached
+
         member = self.resolve_member(filename)
         if member is None:
-            return JsonExtractionResult(found=False, data={})
+            result = JsonExtractionResult(found=False, data={})
+            self._json_cache[filename] = result
+            return result
 
         b = self._read_member_bytes(member)
         raw = b.read()
         if not raw:
-            return JsonExtractionResult(found=True, data={}, member_path=member)
+            result = JsonExtractionResult(found=True, data={}, member_path=member)
+        else:
+            # Call _read_json directly (intentional — avoids BytesIO re-wrapping)
+            data = _read_json(raw, _json_reader_bytes, errors=self.errors)
+            result = JsonExtractionResult(found=True, data=data, member_path=member)
 
-        # Call _read_json directly (intentional — avoids BytesIO re-wrapping)
-        data = _read_json(raw, _json_reader_bytes, errors=self.errors)
-        return JsonExtractionResult(found=True, data=data, member_path=member)
+        self._json_cache[filename] = result
+        return result
 
     def json_all(self, pattern: str) -> list[JsonExtractionResult]:
         """Extract and parse all JSON files matching a regex pattern.
