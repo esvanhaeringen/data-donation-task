@@ -32,17 +32,17 @@ export const TableItems = ({ table, searchedTable, handleUndo, locale }: Props):
 
   return (
     <div className='flex  min-w-[200px] gap-1'>
-      <div className='flex items-center'>{tableIcon}</div>
+      {/* <div className='flex items-center'>{tableIcon}</div> */}
       <div
-        key={`${totalLabel}_${deleted}`}
-        className='flex flex-wrap items-center px-2  gap-x-2 animate-fadeIn text-title7 md:text-title6 font-label'
+        key={`{totalLabel}_{deleted}`}
+        className='flex flex-wrap items-center gap-x-1 animate-fadeIn text-base italic font-label'
       >
         <div className={n > 0 ? '' : 'hidden'}>
-          {table.head.cells.length} {text.columns},
+          {text.dataset} {table.head.cells.length} {text.columns},
         </div>
         <div key={totalLabel} className='animate-fadeIn'>
           {rowsLabel()}
-          {deleted > 0 ? ',' : ''}
+          {deleted > 0 ? '.' : ''}
         </div>
 
         <div className={`flex text-grey2 ${deleted > 0 ? '' : 'hidden'}`}>
@@ -80,8 +80,9 @@ function getTranslations (locale: string): Record<string, string> {
 }
 
 const translations = {
+  dataset: new TextBundle().add('en', 'This data consists of').add('nl', 'Deze gegevens bestaan uit'),
   columns: new TextBundle().add('en', 'columns').add('nl', 'kolommen'),
   rows: new TextBundle().add('en', 'rows').add('nl', 'rijen'),
   noData: new TextBundle().add('en', 'no data').add('nl', 'geen data'),
-  deleted: new TextBundle().add('en', 'deleted').add('nl', 'verwijderd')
+  deleted: new TextBundle().add('en', 'rows have been deleted').add('nl', 'rijen zijn verwijderd')
 }

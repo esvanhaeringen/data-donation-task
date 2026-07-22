@@ -107,13 +107,14 @@ def conversations_to_df(reader: ZipArchiveReader, errors: Counter) -> pd.DataFra
 
         {
           "id": "chatgpt_conversations",
+          "show_grid": false,
           "title": {
-            "en": "Your conversations with ChatGPT",
-            "nl": "Uw gesprekken met ChatGPT"
+            "en": "1. Your conversations",
+            "nl": "1. Uw gesprekken"
           },
           "description": {
-            "en": "In this table you find your conversations with ChatGPT sorted by time. Below, you find a wordcloud, where the size of the words represents how frequent these words have been used in the conversations.",
-            "nl": "In deze tabel vind je je gesprekken met ChatGPT gesorteerd op tijd. Hieronder vind je een woordwolk, waarbij de grootte van de woorden aangeeft hoe vaak ze zijn gebruikt in de gesprekken."
+            "en": "Below you find your conversations with ChatGPT. You can review the content of a conversation by clicking on it. You can also search through the conversations by typing in the search box, selecting a period in the timeline, or clicking on words in the word cloud. See the help buttons for each component for further explanation.",
+            "nl": "Hieronder vindt u uw gesprekken met ChatGPT. U kunt de inhoud van een gesprek bekijken door erop te klikken. U kunt ook door de gesprekken zoeken door iets in het zoekvak te typen, een periode in de tijdlijn te selecteren of op woorden in de woordwolk te klikken. Zie de helpknoppen voor elk onderdeel voor meer uitleg."
           },
           "headers": {
             "conversation title": {"en": "Conversation title", "nl": "Gesprektitel"},

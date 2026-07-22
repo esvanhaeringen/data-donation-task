@@ -17,7 +17,19 @@ export async function prepareConversationData (
 
   const conversationMap = new Map<string, Conversation>()
 
-  for (const row of table.body.rows) {
+  // Build from the pristine, pre-deletion rows when available, so that a
+  // message deleted from the donated table (removed from `body`) still shows
+  // up here as a removed-placeholder the user can restore, rather than
+  // vanishing. A row present in originalBody but no longer in `body` is such a
+  // deleted message; the ones only ever in `body` (no originalBody provided)
+  // are all treated as present. Whole rows the user deleted otherwise (e.g. an
+  // entire conversation) fall out below, once the conversation has no
+  // non-removed messages left.
+  const sourceRows = table.originalBody?.rows ?? table.body.rows
+  const presentIds = new Set(table.body.rows.map(row => row.id))
+
+  for (const row of sourceRows) {
+    const removed = !presentIds.has(row.id)
     const title = titleIdx >= 0 ? (row.cells[titleIdx] ?? '') : ''
     const role = roleIdx >= 0 ? (row.cells[roleIdx] ?? '') : ''
     const message = messageIdx >= 0 ? (row.cells[messageIdx] ?? '') : ''
@@ -28,7 +40,7 @@ export async function prepareConversationData (
     const messageId = idIdx >= 0 ? row.cells[idIdx] : undefined
     const reactionTo = reactionToIdx >= 0 ? row.cells[reactionToIdx] : undefined
 
-    const msg: ConversationMessage = { id: row.id, role, message, model, timestamp, references, sources, messageId, reactionTo }
+    const msg: ConversationMessage = { id: row.id, role, message, model, timestamp, references, sources, messageId, reactionTo, removed }
 
     if (!conversationMap.has(title)) {
       conversationMap.set(title, { title, rowIds: [], messages: [] })
@@ -39,11 +51,15 @@ export async function prepareConversationData (
   }
 
   // Order messages within each conversation. Preferably by walking the
-  // reply chain (messageId/reactionTo), since that stays intact even after a
-  // message's timestamp has been cleared (see handleClearMessage) — a plain
-  // timestamp sort would otherwise bounce a cleared message to the front.
-  // Falls back to a timestamp sort when those columns aren't configured.
-  const conversations: Conversation[] = Array.from(conversationMap.values()).map(conv => {
+  // reply chain (messageId/reactionTo), which keeps removed-placeholder
+  // messages in their original position. Falls back to a timestamp sort when
+  // those columns aren't configured.
+  const conversations: Conversation[] = Array.from(conversationMap.values())
+    // A conversation whose every message is removed was deleted wholesale (as
+    // opposed to having individual messages removed); drop it entirely rather
+    // than showing a conversation made up of nothing but placeholders.
+    .filter(conv => conv.messages.some(msg => !(msg.removed ?? false)))
+    .map(conv => {
     if (idIdx >= 0 && reactionToIdx >= 0) {
       conv.messages = orderByReactionChain(conv.messages)
     } else if (timestampIdx >= 0) {

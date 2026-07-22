@@ -1,4 +1,4 @@
-import { Fragment, JSX, useEffect, useRef, useState } from 'react'
+import { Fragment, JSX, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Highlighter from 'react-highlight-words'
 import {
@@ -13,18 +13,20 @@ import {
   ContentReferenceDil,
   ContentReferenceUrl,
   ContentReferenceAltText,
+  Translatable,
 } from '../types'
 import { getTranslations } from '../translate'
 import { matchesQuery, queryTerms } from '../searchMatch'
 import { buildLiteBlocks, InputSegment, LiteBlock, LiteInlineChild } from './liteMarkdown'
-import { SearchBar } from '../../search_bar'
 import RemoveSvg from '../../assets/images/remove.svg'
+import UndoSvg from '../../assets/images/undo.svg'
 import BackSvg from '../../assets/images/back.svg'
 import MapSvg from '../../assets/images/map.svg'
 import ImagesSvg from '../../assets/images/images.svg'
 import WidgetSvg from '../../assets/images/widget.svg'
 import LinkSvg from '../../assets/images/link.svg'
 import EntitySvg from '../../assets/images/entity.svg'
+import InspectSvg from '../../assets/images/gear.svg'
 
 // This file renders ChatGPT export conversations end to end: the
 // conversation/message list UI, ChatGPT's private-use-area reference-marker
@@ -39,15 +41,18 @@ interface Props {
   search: string
   onSearch: (search: string) => void
   handleDelete: (rowIds: string[]) => void
-  handleClearMessage: (rowId: string) => void
+  handleRestore: (rowIds: string[]) => void
 }
 
 const pillButton = 'group flex items-center text-xs font-bold rounded-full cursor-pointer'
 const sourcesPill = `${pillButton} text-grey1 hover:border-primary hover:bg-grey4 hover:text-primary`
 const sourcesPillMatched = `${pillButton} px-1 text-black border-tertiary bg-tertiary hover:bg-tertiary/70`
 const removePill = `${pillButton} text-error hover:border-error hover:bg-error hover:text-white`
+const restorePill = `${pillButton} text-grey1 hover:border-primary hover:bg-grey4 hover:text-primary`
 const removeIcon = 'w-4 h-4 group-hover:brightness-0 group-hover:invert'
+const restoreIcon = 'w-4 h-4'
 const backIcon = 'w-4 h-4 group-hover:brightness-0 group-hover:invert'
+const inspectIcon = 'w-4 h-4 group-hover:brightness-0 group-hover:invert'
 //  max-[500px]:hidden'
 
 function highlight (text: string, query: string) {
@@ -108,7 +113,11 @@ function conversationMatches (conv: Conversation, query: string): boolean {
   // "banana DATE:2024-03-17" needs "banana" found in msg.message and the
   // date found in msg.timestamp; requiring the *entire* query to match a
   // single field alone would never satisfy both at once.
+  // Removed messages are excluded: their original content is still held in
+  // memory (to render a placeholder and allow restore) but is withheld from
+  // the UI, so it shouldn't quietly pull a conversation into the results.
   return conv.messages.some(msg =>
+    !(msg.removed ?? false) &&
     matchesQuery([msg.message, msg.references, msg.sources, msg.timestamp].map(toSearchableText).join('\n'), query)
   )
 }
@@ -139,7 +148,15 @@ type Screen =
   | { kind: 'sources', sources: SearchResultGroup[], parentLabel: string }
   | { kind: 'details', data: unknown, parentLabel: string }
 
-export default function ChatConversation ({ visualizationData, locale, search, onSearch, handleDelete, handleClearMessage }: Props): JSX.Element {
+// Explanation shown in the help overlay of this visualization (see the help
+// button next to the title in figure.tsx). Module-level rather than inside
+// the component because the overlay is rendered by the surrounding figure.
+export const helpText: Translatable = {
+  en: "This overview shows the conversations found in your data. Click on a conversation to read its messages. Messages can carry extra information the assistant used, such as sources or references; the buttons below a message open that information. Anything you would rather not share can be removed with the remove button next to a message, or the delete button next to a conversation. Typing in the search box above filters the conversations and highlights matching words. Please note that not all content can be shown in the original form, such as images, videos, files or widgets. Click on these items to see what will be donated instead.",
+  nl: "Dit overzicht toont de gesprekken die in jouw gegevens zijn gevonden. Klik op een gesprek om de berichten te lezen. Berichten kunnen extra informatie bevatten die de assistent heeft gebruikt, zoals bronnen of referenties; met de knoppen onder een bericht bekijk je die informatie. Wat je liever niet deelt kun je weghalen met de verwijderknop naast een bericht, of de verwijderknop naast een gesprek. Typen in het zoekveld hierboven filtert de gesprekken en markeert overeenkomende woorden. Houd er rekening mee dat niet alle inhoud in de oorspronkelijke vorm kan worden weergegeven, zoals afbeeldingen, video's, bestanden of widgets. Klik op deze items om te zien wat er in plaats daarvan wordt gedoneerd.",
+}
+
+export default function ChatConversation ({ visualizationData, locale, search, handleDelete, handleRestore }: Props): JSX.Element {
   const [conversations, setConversations] = useState<Conversation[]>(visualizationData.conversations)
   const [selectedTitle, setSelectedTitle] = useState<string | null>(
     visualizationData.conversations[0]?.title ?? null
@@ -159,8 +176,29 @@ export default function ChatConversation ({ visualizationData, locale, search, o
   const isWideLayout = !useIsNarrowViewport(1500)
   const query = search.trim()
 
+  // The message list's own scroll container (the js-message-panel div in
+  // messagesScreenBody). Held as a ref so the two scroll-behavior effects
+  // below can drive scrollTop directly: reset to the top when a different
+  // conversation is opened, and compensate after a message is removed.
+  const messagePanelRef = useRef<HTMLDivElement>(null)
+  // Set to the id of a message just removed, consumed by the layout effect
+  // below once the recompute-driven re-render lands. The removal round-trips
+  // through the worker (see the visualizationData effect), so the scroll
+  // adjustment can't happen inline with the click.
+  const pendingRemovedIdRef = useRef<string | null>(null)
+
   function pushScreen (screen: Screen): void {
     setScreenStack(stack => [...stack, screen])
+  }
+
+  // Removing a message is an ordinary single-row deletion (handleDelete): the
+  // row leaves the donated table, and prepareConversationData still surfaces
+  // it as a removed-placeholder from the pristine rows so it can be restored.
+  // The removed id is recorded first so the layout effect below keeps the
+  // panel anchored once the shrunken placeholder re-renders.
+  function removeMessage (id: string): void {
+    pendingRemovedIdRef.current = id
+    handleDelete([id])
   }
 
   // A no-op at the base 'messages' screen (depth 1) rather than clearing the
@@ -184,7 +222,7 @@ export default function ChatConversation ({ visualizationData, locale, search, o
   const currentScreen = screenStack[screenStack.length - 1]
 
   // The table (and therefore visualizationData) is recomputed asynchronously
-  // by a worker, e.g. after handleClearMessage mutates a row. Re-sync local
+  // by a worker, e.g. after a message is removed or restored. Re-sync local
   // state when a fresh visualizationData prop arrives, keeping the current
   // selection when possible.
   useEffect(() => {
@@ -197,7 +235,7 @@ export default function ChatConversation ({ visualizationData, locale, search, o
     setScreenStack([{ kind: 'messages' }])
   }, [visualizationData])
 
-  const { selectMsg, noDataMsg, deletedMsg, sourcesMsg, detailsMsg, referenceDataMsg, sourceDataMsg, messageLabel, backMsg, removeMsg, searchPlaceholder, youMsg, assistantMsg } = getTranslations({
+  const { selectMsg, noDataMsg, deletedMsg, sourcesMsg, detailsMsg, referenceDataMsg, sourceDataMsg, messageLabel, backMsg, removeMsg, restoreMsg, removedPlaceholderMsg, youMsg, assistantMsg } = getTranslations({
     selectMsg: { en: 'Select a conversation', nl: 'Selecteer een gesprek' },
     noDataMsg: { en: 'No messages', nl: 'Geen berichten' },
     deletedMsg: { en: 'Delete', nl: 'Verwijder' },
@@ -208,9 +246,10 @@ export default function ChatConversation ({ visualizationData, locale, search, o
     messageLabel: { en: 'Message', nl: 'Bericht' },
     backMsg: { en: 'Back', nl: 'Terug' },
     removeMsg: { en: 'Remove message', nl: 'Verwijder bericht' },
+    restoreMsg: { en: 'Restore message', nl: 'Herstel bericht' },
+    removedPlaceholderMsg: { en: '<message removed>', nl: '<bericht verwijderd>' },
     youMsg: { en: 'You', nl: 'Jij' },
-    assistantMsg: { en: 'Assistant', nl: 'Assistent' },
-    searchPlaceholder: { en: 'Search..', nl: 'Zoeken..' }
+    assistantMsg: { en: 'Assistant', nl: 'Assistent' }
   }, locale)
 
   function deleteConversation (conv: Conversation): void {
@@ -241,6 +280,38 @@ export default function ChatConversation ({ visualizationData, locale, search, o
     setScreenStack([{ kind: 'messages' }])
   }, [activeTitle])
 
+  // Opening a conversation shows its messages from the top, rather than
+  // inheriting wherever the previously-open conversation happened to be
+  // scrolled to (the panel is reused across conversations on desktop, so its
+  // scrollTop otherwise persists). Runs on activeTitle so it also covers the
+  // search-fallback case where the open conversation is swapped out for
+  // another. Layout effect so the reset lands before the new list paints.
+  useLayoutEffect(() => {
+    const panel = messagePanelRef.current
+    if (panel != null) panel.scrollTop = 0
+  }, [activeTitle])
+
+  // After a message is removed it shrinks in place (it stays rendered as a
+  // placeholder rather than disappearing), pulling everything below it
+  // upward. If the removed message's top sat above the visible panel top
+  // (scrolled past), that shift would leave the user looking at unrelated
+  // content further down. Re-anchor to the top of the now-removed message in
+  // that case so it stays the reference point; if its top was already
+  // on-screen, leave the scroll position untouched. Keyed on conversations
+  // because the removal only reflects here once the worker recompute lands
+  // (see the visualizationData effect), not synchronously with the click.
+  useLayoutEffect(() => {
+    const id = pendingRemovedIdRef.current
+    if (id == null) return
+    pendingRemovedIdRef.current = null
+    const panel = messagePanelRef.current
+    if (panel == null) return
+    const el = panel.querySelector(`[data-msg-id="${id}"]`)
+    if (el == null) return
+    const topWithinContent = el.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop
+    if (topWithinContent < panel.scrollTop) panel.scrollTop = topWithinContent
+  }, [conversations])
+
   // On mobile, if the conversation the user has open stops matching a new
   // search (filtered out of visibleConversations above), pop back to the
   // conversation list - which still reflects the narrower set of matches -
@@ -260,9 +331,6 @@ export default function ChatConversation ({ visualizationData, locale, search, o
   // can be showing.
   const conversationListPanel = (
     <>
-      <div className='shrink-0 p-2 border-b border-grey4'>
-        <SearchBar placeholder={searchPlaceholder} search={search} onSearch={onSearch} />
-      </div>
       <div className='shrink-0 p-2 border-b border-grey4 flex items-center justify-between'>
         { query === '' ? (
           <span className='italic text-sm'>{"Your data contains "} {visibleConversations.length} {visibleConversations.length === 1 ? 'conversation' : 'conversations'}</span>
@@ -309,42 +377,54 @@ export default function ChatConversation ({ visualizationData, locale, search, o
     // js-message-panel is a plain selector hook (no styling role) so
     // CitationPill can find this panel's bounds via closest() to keep its
     // tooltip positioned within it, rather than the viewport.
-    <div className='js-message-panel flex-1 overflow-y-auto h-full overflow-x-hidden p-3 flex flex-col gap-2'>
+    <div ref={messagePanelRef} className='js-message-panel flex-1 overflow-y-auto h-full overflow-x-hidden p-3 flex flex-col gap-2'>
       {selectedConversation == null
         ? <div className='m-auto text-grey2'>{selectMsg}</div>
         : selectedConversation.messages.length === 0
           ? <div className='m-auto text-grey2'>{noDataMsg}</div>
           : selectedConversation.messages.map(msg => {
               const isUser = msg.role === 'user'
-              // handleClearMessage blanks every field except id/reactionTo/title/role,
-              // an empty timestamp reliably marks an already-removed message.
-              const isRemoved = msg.timestamp === ''
+              // A removed message's row has been deleted from the donated
+              // table; prepareConversationData still surfaces it here (from
+              // the pristine rows) flagged as removed, so it renders as a
+              // placeholder with a restore button and its original content,
+              // sources and references withheld.
+              const isRemoved = msg.removed ?? false
               const messageSources = msg.sources?.flatMap(group => group.entries ?? group.items ?? []) ?? []
               const sourcesMatched = matchesQuery(msg.sources, query)
               const detailsMatched = matchesQuery(msg.references, query)
               return (
                 <div
                   key={msg.id}
+                  data-msg-id={msg.id}
                   className={`flex flex-col max-w-[90%] py-1 ${isUser ? 'self-end items-end' : 'self-start items-start'}`}
                 >
                   <div
                     className={`px-3 py-2 w-full rounded-2xl text-sm whitespace-pre-wrap break-words ${
-                      isUser
-                        ? 'bg-primary text-white rounded-br-sm'
-                        : 'bg-grey4 text-black rounded-bl-sm'
+                      isRemoved
+                        ? 'bg-grey5 text-grey2 italic'
+                        : isUser
+                          ? 'bg-primary text-white rounded-br-sm'
+                          : 'bg-grey4 text-black rounded-bl-sm'
                     }`}
                   >
-                    <MessageContent
-                      message={msg.message}
-                      references={msg.references}
-                      locale={locale}
-                      searchQuery={query}
-                      onShowRaw={(data, parentLabel) => pushScreen({ kind: 'details', data, parentLabel })}
-                    />
+                    {isRemoved
+                      ? removedPlaceholderMsg
+                      : (
+                        <MessageContent
+                          message={msg.message}
+                          references={msg.references}
+                          locale={locale}
+                          searchQuery={query}
+                          onShowRaw={(data, parentLabel) => pushScreen({ kind: 'details', data, parentLabel })}
+                        />
+                        )}
                   </div>
                   <div className='flex items-start gap-2 mt-0.5 px-1'>
                     <span className="text-xs italic text-grey2">
-                      {!isUser &&
+                      {!isUser && isRemoved && assistantMsg}
+
+                      {!isUser && !isRemoved &&
                         msg.model != null &&
                         msg.model !== "" &&
                         (!isPhoneLayout
@@ -353,15 +433,17 @@ export default function ChatConversation ({ visualizationData, locale, search, o
 
                       {isUser && youMsg}
 
-                      {msg.timestamp != null &&
+                      {!isRemoved &&
+                        msg.timestamp != null &&
                         msg.timestamp !== "" &&
                         ` at ${formatDate(msg.timestamp, locale)}`}
 
-                      {msg.branchCount != null &&
+                      {!isRemoved &&
+                        msg.branchCount != null &&
                         msg.branchCount > 1 &&
                         ` ${msg.branchIndex}/${msg.branchCount}`}
                     </span>
-                    {messageSources.length > 0 && (
+                    {!isRemoved && messageSources.length > 0 && (
                       <button
                         onClick={() => pushScreen({ kind: 'sources', sources: msg.sources ?? [], parentLabel: `${messageLabel} ${msg.id}` })}
                         className={sourcesMatched ? sourcesPillMatched : sourcesPill}
@@ -371,7 +453,7 @@ export default function ChatConversation ({ visualizationData, locale, search, o
                         {sourcesMsg}
                       </button>
                     )}
-                    {msg.references != null && msg.references.length > 0 && (
+                    {!isRemoved && msg.references != null && msg.references.length > 0 && (
                       <button
                         onClick={() => pushScreen({ kind: 'details', data: msg.references ?? [], parentLabel: `${messageLabel} ${msg.id}` })}
                         className={detailsMatched ? sourcesPillMatched : sourcesPill}
@@ -380,13 +462,21 @@ export default function ChatConversation ({ visualizationData, locale, search, o
                         {detailsMsg}
                       </button>
                     )}
-                    {!isRemoved && (
+                    {!isRemoved ? (
                       <button
-                        onClick={() => handleClearMessage(msg.id)}
+                        onClick={() => removeMessage(msg.id)}
                         className={removePill}
                         title={removeMsg}
                       >
                         <img src={RemoveSvg} className={removeIcon} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleRestore([msg.id])}
+                        className={restorePill}
+                        title={restoreMsg}
+                      >
+                        <img src={UndoSvg} className={restoreIcon} />
                       </button>
                     )}
                   </div>
@@ -431,7 +521,7 @@ export default function ChatConversation ({ visualizationData, locale, search, o
           back) since it's independent of the always-visible messages panel
           beside it - see renderExtraPanel/closeExtraPanel. */}
       {isWideLayout && screenStack.length > 1 && (
-        <div className='flex-1 flex flex-col overflow-hidden border-l border-grey3 bg-grey5'>
+        <div className='flex-1 flex flex-col overflow-hidden border-l border-grey2 bg-grey4'>
           {renderExtraPanel()}
         </div>
       )}
@@ -472,7 +562,7 @@ export default function ChatConversation ({ visualizationData, locale, search, o
     return (
       <>
         {showHeader && (
-          <div className='shrink-0 flex items-center gap-2 p-2 border-b border-grey4'>
+          <div className='shrink-0 flex items-center gap-2 p-2 border-b border-grey3 bg-grey6'>
             <button onClick={onBack} className='shrink-0 text-grey2 hover:text-black text-xl leading-none px-1 cursor-pointer' title={backMsg}>
               <img src={BackSvg} className={backIcon} />
             </button>
@@ -492,9 +582,10 @@ export default function ChatConversation ({ visualizationData, locale, search, o
   function renderExtraPanel (): JSX.Element {
     return (
       <>
-        <div className='shrink-0 flex items-center gap-2 p-2 border-b border-grey4'>
+        <div className='items-center shrink-0 flex items-center gap-2 p-2 border-b border-grey4'>
+          <img src={InspectSvg} className={inspectIcon} />
           <span className='text-sm font-bold truncate flex-1'>{screenTitle(currentScreen)}</span>
-          <button onClick={closeExtraPanel} className='shrink-0 text-grey2 hover:text-black text-2xl leading-none px-1'>&times;</button>
+          <button onClick={closeExtraPanel} className='shrink-0 text-grey2 hover:text-black text-2xl leading-none px-1 cursor-pointer'>&times;</button>
         </div>
         {currentScreen.kind === 'sources' && <SourcesScreen sources={currentScreen.sources} locale={locale} searchQuery={query} />}
         {currentScreen.kind === 'details' && <DetailsScreen data={currentScreen.data} searchQuery={query} />}

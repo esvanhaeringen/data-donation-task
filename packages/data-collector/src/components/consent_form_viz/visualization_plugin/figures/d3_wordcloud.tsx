@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from "react"
 import cloud from "d3-cloud"
 import stopwords from "./common_stopwords"
-import { TextVisualizationData } from "../types"
+import { TextVisualizationData, Translatable } from "../types"
 
 type Word = { text: string; value: number }
 
@@ -163,6 +163,14 @@ function Wordcloud({ visualizationData, nWords = 100, search = "", onSearch }: P
       <svg ref={svgRef} style={{ width: "100%", height: "100%" }} />
     </div>
   )
+}
+
+// Explanation shown in the help overlay of this visualization (see the help
+// button next to the title in figure.tsx). Module-level rather than inside
+// the component because the overlay is rendered by the surrounding figure.
+export const helpText: Translatable = {
+  en: 'These are the words that appear most often in your data, where a bigger word means it was used more frequently. Very common words such as "the" and "and" are left out. Clicking a word adds it to the search, so the other visualizations and the table only show items containing that word; clicking more words narrows the selection further.',
+  nl: 'Dit zijn de woorden die het vaakst in jouw gegevens voorkomen, waarbij een groter woord betekent dat het vaker is gebruikt. Veelvoorkomende woorden zoals "de" en "en" worden weggelaten. Klik op een woord om het aan de zoekopdracht toe te voegen, zodat de andere visualisaties en de tabel alleen items met dat woord tonen; door meer woorden aan te klikken maak je de selectie steeds smaller.'
 }
 
 export default Wordcloud

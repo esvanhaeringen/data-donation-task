@@ -16,10 +16,17 @@ export const zLabel = z.union([zTranslatable, z.string()])
 export type Label = z.infer<typeof zLabel>
 
 // Table type, but only taking what we need
+const zTableBody = z.object({ rows: z.array(z.object({ id: z.string(), cells: z.array(z.string()) })) })
 export const zTable = z.object({
   id: z.string(),
   head: z.object({ cells: z.array(z.string()) }),
-  body: z.object({ rows: z.array(z.object({ id: z.string(), cells: z.array(z.string()) })) }),
+  body: zTableBody,
+  // The pristine, pre-deletion row set. Optional because only some callers
+  // provide it; the chat_conversation visualization uses it to still render
+  // deleted messages as removed-placeholders (a row present here but absent
+  // from `body` is a deleted message - see prepareConversationData), rather
+  // than having them silently disappear like a plain filtered-out row.
+  originalBody: zTableBody.optional(),
 })
 export type Table = z.infer<typeof zTable>
 
@@ -305,6 +312,10 @@ export interface ConversationMessage {
   // flattening alternates into what looks like a linear sequence of turns.
   branchIndex?: number
   branchCount?: number
+  // True when this message's row has been deleted from the donated table but
+  // is still shown as a removed-placeholder so it can be restored (see
+  // prepareConversationData / the tombstone rendering in chat_conversation).
+  removed?: boolean
 }
 
 export interface Conversation {

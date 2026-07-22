@@ -1,5 +1,5 @@
 import { RefObject, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDayCount, CalendarVisualizationData } from '../types'
+import { CalendarDayCount, CalendarVisualizationData, Translatable } from '../types'
 import { DATE_PREFIX, dateTermFragments, isDateTerm, matchesQuery, queryTerms } from '../searchMatch'
 
 interface Props {
@@ -86,6 +86,14 @@ function useElementSize (): [RefObject<HTMLDivElement | null>, { width: number, 
   }, [])
 
   return [ref, size]
+}
+
+// Explanation shown in the help overlay of this visualization (see the help
+// button next to the title in figure.tsx). Module-level rather than inside
+// the component because the overlay is rendered by the surrounding figure.
+export const helpText: Translatable = {
+  en: 'Every square is one day, and the darker the square the more activity that day contains. Hovering a square shows the date and the number of items. Clicking a day adds it to the search, so the other visualizations and the table only show that day; clicking it again removes it from the search.',
+  nl: 'Elk vierkantje is één dag, en hoe donkerder het vierkantje, hoe meer activiteit die dag bevat. Beweeg je muis over een vierkantje om de datum en het aantal items te zien. Klik op een dag om deze aan de zoekopdracht toe te voegen, zodat de andere visualisaties en de tabel alleen die dag tonen; klik nogmaals om de dag weer uit de zoekopdracht te halen.'
 }
 
 export default function CalendarHeatmap ({ visualizationData, locale, search, onSearch }: Props): JSX.Element | null {

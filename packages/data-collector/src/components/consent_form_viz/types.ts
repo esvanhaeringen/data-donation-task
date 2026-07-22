@@ -15,6 +15,8 @@ export interface PropsUIPromptConsentFormViz {
   description?: Text
   donateQuestion?: Text
   donateButton?: Text
+  helpButton?: Text
+  helpText?: Text
   tables: PropsUIPromptConsentFormTableViz[]
 }
 

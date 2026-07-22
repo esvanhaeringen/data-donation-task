@@ -32,16 +32,16 @@ class FlowBuilder:
                 "nl": f"Selecteer uw {self.platform_name} bestand",
             }),
             "review_data_header": props.Translatable({
-                "en": f"Your {self.platform_name} data",
-                "nl": f"Uw {self.platform_name} gegevens",
+                "en": f"Step 1. Inspect your {self.platform_name} data",
+                "nl": f"Stap 1. Inspecteer uw {self.platform_name} gegevens",
             }),
             "retry_header": props.Translatable({
                 "en": "Try again",
                 "nl": "Probeer opnieuw",
             }),
             "review_data_description": props.Translatable({
-                "en": f"Below you will find a curated selection of {self.platform_name} data.",
-                "nl": f"Hieronder vindt u een zorgvuldig samengestelde selectie van {self.platform_name} gegevens.",
+                "en": f"Here you find the {self.platform_name} data from your archive that are selected for donation. Please review these data before donating them for research.",
+                "nl": f"Hier vindt u de {self.platform_name} gegevens uit uw archief die zijn geselecteerd voor donatie. Inspecteer alstublieft deze gegevens voordat u ze doneert voor onderzoek.",
             }),
         }
 

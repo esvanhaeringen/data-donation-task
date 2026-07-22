@@ -1,18 +1,32 @@
-import { VisualizationData, ChartVisualizationData, TextVisualizationData, ConversationVisualizationData, CalendarVisualizationData, zTable, zVisualizationType } from './types'
+import { VisualizationData, ChartVisualizationData, TextVisualizationData, ConversationVisualizationData, CalendarVisualizationData, Translatable, zTable, zVisualizationType } from './types'
 import { memo, useEffect, useMemo, useState } from 'react'
 
 import useVisualizationData from './visualizationDataFunctions/useVisualizationData'
 
-import RechartsGraph from './figures/recharts_graph'
-import VisxWordcloud from './figures/d3_wordcloud'
-import ChatConversation from './figures/chat_conversation'
-import CalendarHeatmap from './figures/calendar_heatmap'
+import RechartsGraph, { helpText as chartHelp } from './figures/recharts_graph'
+import VisxWordcloud, { helpText as wordcloudHelp } from './figures/d3_wordcloud'
+import ChatConversation, { helpText as chatConversationHelp } from './figures/chat_conversation'
+import CalendarHeatmap, { helpText as calendarHeatmapHelp } from './figures/calendar_heatmap'
 import { zoomInIcon, zoomOutIcon } from './zoom_icons'
 import { z } from 'zod'
 import { Loader } from './ui/loader'
 import { getTranslations, translate } from './translate'
+import HelpSvg from '../assets/images/help.svg'
 
 const doubleTypes = ['wordcloud', 'chat_conversation']
+
+// Each figure component owns the explanation of its own visualization (see
+// the exported helpText in the files imported above); this only maps the
+// visualization type onto the right one, since the title - and therefore the
+// help button next to it - is rendered here rather than in the components.
+const helpTexts: Record<string, Translatable> = {
+  line: chartHelp,
+  bar: chartHelp,
+  area: chartHelp,
+  wordcloud: wordcloudHelp,
+  chat_conversation: chatConversationHelp,
+  calendar_heatmap: calendarHeatmapHelp
+}
 type ShowStatus = 'hidden' | 'visible' | 'double'
 
 export interface FigureProps {
@@ -24,7 +38,7 @@ export interface FigureProps {
   locale: string
   handleDelete: (rowIds: string[]) => void
   handleUndo: () => void
-  handleClearMessage: (rowId: string) => void
+  handleRestore: (rowIds: string[]) => void
 }
 
 export const Figure = ({
@@ -36,7 +50,7 @@ export const Figure = ({
   locale,
   handleDelete,
   handleUndo,
-  handleClearMessage
+  handleRestore
 }: FigureProps): JSX.Element => {
   const tableValidator = useMemo(() => zTable.safeParse(tableInput), [tableInput])
   const fullTableValidator = useMemo(() => zTable.safeParse(fullTableInput), [fullTableInput])
@@ -59,7 +73,7 @@ export const Figure = ({
       locale={locale}
       handleDelete={handleDelete}
       handleUndo={handleUndo}
-      handleClearMessage={handleClearMessage}
+      handleRestore={handleRestore}
     />
   )
 }
@@ -73,7 +87,7 @@ export interface ValidatedFigureProps {
   locale: string
   handleDelete: (rowIds: string[]) => void
   handleUndo: () => void
-  handleClearMessage: (rowId: string) => void
+  handleRestore: (rowIds: string[]) => void
 }
 
 export const FigureComponent = ({
@@ -85,7 +99,7 @@ export const FigureComponent = ({
   locale,
   handleDelete,
   handleUndo,
-  handleClearMessage
+  handleRestore
 }: ValidatedFigureProps): JSX.Element => {
   // The chat visualization filters conversations and highlights matches
   // itself (see ChatConversation), rather than having non-matching rows
@@ -100,6 +114,19 @@ export const FigureComponent = ({
   const [longLoading, setLongLoading] = useState<boolean>(false)
   const [showStatus, setShowStatus] = useState<ShowStatus>('visible')
   const [resizeLoading, setResizeLoading] = useState<boolean>(false)
+  const [showHelp, setShowHelp] = useState<boolean>(false)
+  const help = helpTexts[visualization.type]
+
+  // Escape closes the help overlay, matching how the other popups in these
+  // visualizations behave.
+  useEffect(() => {
+    if (!showHelp) return
+    function onKeyDown (e: KeyboardEvent): void {
+      if (e.key === 'Escape') setShowHelp(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showHelp])
 
   useEffect(() => {
     if (status !== 'loading') {
@@ -126,7 +153,7 @@ export const FigureComponent = ({
   }
 
   const canDouble = doubleTypes.includes(visualization.type)
-  const { errorMsg, noDataMsg } = useMemo(() => prepareTexts(locale), [locale])
+  const { errorMsg, noDataMsg, helpMsg, closeMsg } = useMemo(() => prepareTexts(locale), [locale])
 
   if (visualizationData == null && status === 'loading') {
     if (longLoading) return <Loader />
@@ -140,13 +167,39 @@ export const FigureComponent = ({
   if (showStatus === 'double') height = height * 2
 
   return (
-    <div className=' max-w overflow-hidden  bg-grey6 rounded-md border-[0.2rem] border-grey4'>
+    <div className='relative max-w overflow-hidden  bg-grey6 rounded-md border-[0.2rem] border-grey4'>
       <div className='flex justify-between'>
-        <div className='font-bold p-3'>{translate(visualization.title, locale)}</div>
+        <div className='flex items-center gap-2 p-3'>
+          <div className='font-bold'>{translate(visualization.title, locale)}</div>
+          {help != null && (
+            <button onClick={() => setShowHelp(true)} title={helpMsg} aria-label={helpMsg}>
+              <img src={HelpSvg} className='w-5 h-5 cursor-pointer' alt='' />
+            </button>
+          )}
+        </div>
         <button onClick={toggleDouble} className={showStatus !== 'hidden' && canDouble ? 'text-primary' : 'hidden'}>
           {showStatus === 'double' ? zoomOutIcon : zoomInIcon}
         </button>
       </div>
+      {showHelp && help != null && (
+        <div
+          className='absolute inset-0 z-30 flex items-center justify-center bg-black/50 p-4 cursor-pointer'
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className='max-h-full w-full max-w-[36rem] overflow-auto rounded-md bg-grey6 p-5 shadow-2xl cursor-default'
+            onClick={e => e.stopPropagation()}
+          >
+            <div className='flex justify-between items-start gap-4'>
+              <div className='font-bold'>{translate(visualization.title, locale)}</div>
+              <button onClick={() => setShowHelp(false)} className='text-primary font-bold cursor-pointer' aria-label={closeMsg}>
+                {closeMsg}
+              </button>
+            </div>
+            <div className='mt-3 whitespace-pre-line'>{translate(help, locale)}</div>
+          </div>
+        </div>
+      )}
       <div className='w-full overflow-auto'>
         <div className='flex flex-col '>
           <div
@@ -161,7 +214,7 @@ export const FigureComponent = ({
               search={search}
               onSearch={onSearch}
               handleDelete={handleDelete}
-              handleClearMessage={handleClearMessage}
+              handleRestore={handleRestore}
             />
           </div>
         </div>
@@ -179,7 +232,7 @@ export const RenderVisualization = memo(
     search,
     onSearch,
     handleDelete,
-    handleClearMessage
+    handleRestore
   }: {
     visualizationData: VisualizationData | undefined
     fallbackMessage: string
@@ -188,7 +241,7 @@ export const RenderVisualization = memo(
     search: string
     onSearch: (search: string) => void
     handleDelete: (rowIds: string[]) => void
-    handleClearMessage: (rowId: string) => void
+    handleRestore: (rowIds: string[]) => void
   }): JSX.Element | null => {
     if (visualizationData == null) return null
 
@@ -211,7 +264,7 @@ export const RenderVisualization = memo(
     if (visualizationData.type === 'chat_conversation') {
       const convData = visualizationData as ConversationVisualizationData
       if (convData.conversations.length === 0) return fallback
-      return <ChatConversation visualizationData={convData} locale={locale} search={search} onSearch={onSearch} handleDelete={handleDelete} handleClearMessage={handleClearMessage} />
+      return <ChatConversation visualizationData={convData} locale={locale} search={search} onSearch={onSearch} handleDelete={handleDelete} handleRestore={handleRestore} />
     }
 
     if (visualizationData.type === 'calendar_heatmap') {
@@ -233,6 +286,14 @@ function prepareTexts (locale: string): Record<string, string> {
     noDataMsg: {
       en: 'No data',
       nl: 'Geen data'
+    },
+    helpMsg: {
+      en: 'What am I looking at?',
+      nl: 'Wat zie ik hier?'
+    },
+    closeMsg: {
+      en: 'Close',
+      nl: 'Sluiten'
     }
   }
 

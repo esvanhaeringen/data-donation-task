@@ -1,6 +1,6 @@
 import { translate } from '../translate'
 import * as React from 'react'
-import { AxisSettings, TickerFormat, ChartVisualizationData } from '../types'
+import { AxisSettings, TickerFormat, ChartVisualizationData, Translatable } from '../types'
 
 import {
   ResponsiveContainer,
@@ -23,6 +23,14 @@ interface Props {
 }
 
 const margin = { top: 5, right: 5, left: 5, bottom: 15 }
+
+// Explanation shown in the help overlay of this visualization (see the help
+// button next to the title in figure.tsx). Module-level rather than inside
+// the component because the overlay is rendered by the surrounding figure.
+export const helpText: Translatable = {
+  en: 'This chart summarises your data: the horizontal axis shows the categories or time periods that were found, and the height of the line, bar or area shows how much data falls into each of them. Hovering a point shows the exact values, and the legend explains what each colour stands for.',
+  nl: 'Deze grafiek vat jouw gegevens samen: de horizontale as toont de categorieën of tijdsperioden die zijn gevonden, en de hoogte van de lijn, balk of vlak laat zien hoeveel gegevens daarbij horen. Beweeg je muis over een punt om de precieze waarden te zien; de legenda legt uit waar elke kleur voor staat.'
+}
 
 export default function RechartsGraph ({ visualizationData, locale }: Props): JSX.Element | null {
   const xLabel = translate(visualizationData.xLabel ?? visualizationData.xKey, locale)

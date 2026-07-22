@@ -95,10 +95,47 @@ def _build_config(
             description=props.Translatable(entry["description"]),
             headers=headers,
             extractor_kwargs=entry.get("extractor_kwargs", {}),
-            visualizations=entry.get("visualizations", []),
+            visualizations=_resolve_visualizations(entry),
             variables=entry.get("variables", None),
         ))
     return configs
+
+
+def _resolve_visualizations(entry: dict) -> list[dict[str, Any]]:
+    """Resolve the visualizations to render for a table config entry.
+
+    The extracted DataFrame is a data source that any visualization can
+    consume; the plain table grid is just one such visualization, opted in via
+    a ``{"type": "grid"}`` entry in ``visualizations``.  To keep existing
+    configs working without change, a grid is prepended by default.  A config
+    can suppress the grid entirely - showing only its other visualizations,
+    e.g. ChatGPT rendering just the ``chat_conversation`` view - by setting
+    ``"show_grid": false``.  Placing an explicit ``{"type": "grid"}`` in the
+    list gives full control over its position and is left untouched.
+
+    Parameters
+    ----------
+    entry:
+        A single table config dict from the platform config JSON.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        The visualization descriptors to pass to the UI.
+    """
+    visualizations = list(entry.get("visualizations", []))
+    show_grid = entry.get("show_grid", True)
+    has_grid = any(
+        isinstance(vs, dict) and vs.get("type") == "grid" for vs in visualizations
+    )
+    if not show_grid:
+        return [
+            vs for vs in visualizations
+            if not (isinstance(vs, dict) and vs.get("type") == "grid")
+        ]
+    if not has_grid:
+        return [{"type": "grid"}, *visualizations]
+    return visualizations
 
 
 

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { 
     Translator,
     Title4,
+    Title3,
 } from "@eyra/feldspar"
 import TextBundle from "@eyra/feldspar"
 import { 
@@ -11,6 +12,7 @@ import {
 import { TableItems } from "./table_items"
 import { Figure } from "./visualization_plugin/figure"
 import { Table } from "./table"
+import { SearchBar } from "./search_bar"
 import { matchesQuery, queryTerms } from "./visualization_plugin/searchMatch"
 
 interface TableContainerProps {
@@ -22,6 +24,13 @@ interface TableContainerProps {
 
 export const TableContainer = ({ id, table, updateTable, locale }: TableContainerProps): JSX.Element => {
   const tableVisualizations = table.visualizations != null ? table.visualizations : []
+  // The grid is now just one selectable renderer of the table's data, opted
+  // in via a { "type": "grid" } visualization spec (see table_extractor.py).
+  // When it's absent the table renders only its other visualizations (e.g.
+  // ChatGPT showing just the chat_conversation view), while search and the
+  // deleted/undo controls stay available at the table level regardless.
+  const gridSpec = tableVisualizations.find((vs: any) => vs?.type === "grid")
+  const figureVisualizations = tableVisualizations.filter((vs: any) => vs?.type !== "grid")
   const [searchFilterIds, setSearchFilterIds] = useState<Set<string>>()
   const [search, setSearch] = useState<string>("")
   const lastSearch = useRef<string>("")
@@ -75,12 +84,20 @@ export const TableContainer = ({ id, table, updateTable, locale }: TableContaine
     updateTable(id, newTable)
   }, [id, table])
 
-  const handleClearMessage = useCallback(
-    (rowId: string, visualization: any) => {
-      const newTable = clearMessageFields(table, rowId, visualization, text.removedMessage)
+  // Un-deletes specific rows (the inverse of handleDelete for a known set of
+  // ids, as opposed to handleUndo which pops the whole last deletion batch):
+  // strips them from every deletion batch and rebuilds. Used by the chat
+  // visualization to restore an individually removed message.
+  const handleRestore = useCallback(
+    (rowIds: string[]) => {
+      const restore = new Set(rowIds)
+      const deletedRows = table.deletedRows
+        .map((batch) => batch.filter((rowId) => !restore.has(rowId)))
+        .filter((batch) => batch.length > 0)
+      const newTable = deleteTableRows(table, deletedRows)
       updateTable(id, newTable)
     },
-    [id, table, text.removedMessage]
+    [id, table]
   )
 
   const unfilteredRows = table.body.rows.length
@@ -88,51 +105,63 @@ export const TableContainer = ({ id, table, updateTable, locale }: TableContaine
   return (
     <div
       key={table.id}
-      className="p-3 md:p-4 lg:p-6 flex flex-col gap-4 w-full overflow-hidden border-[0.2rem] border-grey4 rounded-lg"
+      className="flex flex-col gap-4 w-full overflow-hidden"
     >
+      <hr className='border-grey3' />
       <div className="flex flex-wrap ">
         <div key="Title" className="flex sm:flex-row justify-between w-full gap-1 mb-2">
           <Title4 text={table.title} margin="" />
+          <hr className="h-px my-4 bg-neutral-quaternary border-1" />
         </div>
-        <div key="Description" className="flex flex-col w-full mb-2 text-base md:text-lg font-body max-w-2xl">
+        <div key="Description" className="flex flex-col w-full mb-2 text-base md:text-lg font-body max-w-full">
           <p>{table.description}</p>
         </div>
-        <div key="TableSummary" className="flex items-center justify-between w-full mt-1 pt-1 rounded ">
-          <TableItems table={table} searchedTable={searchedTable} handleUndo={handleUndo} locale={locale} />
-
-          <button
-            key={show ? "animate" : ""}
-            className={`flex end gap-3 animate-fadeIn ${unfilteredRows === 0 ? "hidden" : ""}`}
-            onClick={() => setShow(!show)}
-          >
-            <div key="zoomIcon" className="text-primary">
-              {show ? zoomOutIcon : zoomInIcon}
+        <div key="Controls" className="flex flex-col gap-2 w-full mt-1 pt-1 pb-2">
+          <div className="items-center gap-3 w-full">
+            <div className="items-center justify-between w-full">
+              <TableItems table={table} searchedTable={searchedTable} handleUndo={handleUndo} locale={locale} />
             </div>
-            <div key="zoomText" className="text-right hidden md:block">
-              {show ? text.hideTable : text.showTable}
+            <div className="flex-1 max-w-full">
+              <SearchBar search={search} onSearch={setSearch} placeholder={text.searchPlaceholder} />
             </div>
-          </button>
-        </div>
-        <div key="Table" className="w-full">
-          <div className="">
-            <Table
-              show={show}
-              table={searchedTable}
-              search={search}
-              unfilteredRows={unfilteredRows}
-              handleDelete={handleDelete}
-              handleUndo={handleUndo}
-              locale={locale}
-            />
+            {/* {gridSpec != null && (
+              <button
+                key={show ? "animate" : ""}
+                className={`flex items-center gap-3 animate-fadeIn ${unfilteredRows === 0 ? "hidden" : ""}`}
+                onClick={() => setShow(!show)}
+              >
+                <div key="zoomIcon" className="text-primary">
+                  {show ? zoomOutIcon : zoomInIcon}
+                </div>
+                <div key="zoomText" className="text-right hidden md:block">
+                  {show ? text.hideTable : text.showTable}
+                </div>
+              </button>
+            )} */}
           </div>
         </div>
+        {gridSpec != null && (
+          <div key="Table" className="w-full">
+            <div className="">
+              <Table
+                show={show}
+                table={searchedTable}
+                search={search}
+                unfilteredRows={unfilteredRows}
+                handleDelete={handleDelete}
+                handleUndo={handleUndo}
+                locale={locale}
+              />
+            </div>
+          </div>
+        )}
         <div
           key="Visualizations"
           className={`pt-2 grid w-full gap-4 transition-all ${
-            tableVisualizations.length > 0 && unfilteredRows > 0 ? "" : "hidden"
+            figureVisualizations.length > 0 && unfilteredRows > 0 ? "" : "hidden"
           }`}
         >
-          {groupVisualizations(tableVisualizations).map((group, groupIndex) => (
+          {groupVisualizations(figureVisualizations).map((group, groupIndex) => (
             <div key={groupIndex} className="min-[1000px]:flex lg:flex-row flex-wrap gap-4">
               {group.map((vs: any, i: number) => (
                 <div key={i} className="flex-1 min-w-[280px]">
@@ -146,7 +175,7 @@ export const TableContainer = ({ id, table, updateTable, locale }: TableContaine
                     locale={locale}
                     handleDelete={handleDelete}
                     handleUndo={handleUndo}
-                    handleClearMessage={(rowId) => handleClearMessage(rowId, vs)}
+                    handleRestore={handleRestore}
                   />
                 </div>
               ))}
@@ -194,40 +223,6 @@ function deleteTableRows(table: TableWithContext, deletedRows: string[][]): Tabl
     body: { ...table.body, rows },
     deletedRowCount,
     deletedRows,
-  }
-}
-
-// Clears every cell of the row identified by rowId, except the columns named
-// by visualization.idColumn, visualization.reactionToColumn,
-// visualization.titleColumn and visualization.roleColumn (so the row stays 
-// anchored in its conversation). The messageColumn cell is replaced with 
-// removedMessageText instead of being blanked, so it's clear in the UI that 
-// the message was intentionally removed.
-function clearMessageFields(
-  table: TableWithContext,
-  rowId: string,
-  visualization: any,
-  removedMessageText: string
-): TableWithContext {
-  const keptColumns = new Set<string>(
-    [visualization?.idColumn, visualization?.reactionToColumn, visualization?.titleColumn, visualization?.roleColumn].filter(Boolean)
-  )
-  const messageColumn = visualization?.messageColumn
-
-  const clearRow = (row: PropsUITableRow): PropsUITableRow => {
-    if (row.id !== rowId) return row
-    const cells = table.head.cells.map((column, i) => {
-      if (keptColumns.has(column)) return row.cells[i]
-      if (column === messageColumn) return removedMessageText
-      return ""
-    })
-    return { ...row, cells }
-  }
-
-  return {
-    ...table,
-    body: { ...table.body, rows: table.body.rows.map(clearRow) },
-    originalBody: { ...table.originalBody, rows: table.originalBody.rows.map(clearRow) },
   }
 }
 
@@ -297,5 +292,5 @@ function getTranslations(locale: string): Record<string, string> {
 const translations = {
   showTable: new TextBundle().add("en", "Show table").add("nl", "Tabel tonen"),
   hideTable: new TextBundle().add("en", "Hide table").add("nl", "Tabel verbergen"),
-  removedMessage: new TextBundle().add("en", "<message is removed>").add("nl", "<bericht is verwijderd>"),
+  searchPlaceholder: new TextBundle().add("en", "Type here to search through this data...").add("nl", "Type hier om te zoeken in deze gegevens..."),
 }
