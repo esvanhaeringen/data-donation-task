@@ -28,7 +28,6 @@ Platform info::
 """
 
 import ast
-import ast
 from csv import reader
 import io
 import json
@@ -1343,124 +1342,6 @@ def share_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
     return out
 
 
-def comments_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.DataFrame:
-    """Extract TikTok comments.
-
-    Reads ``Comment > Comments > CommentsList`` from the TikTok export JSON or 
-    from ``Reacties.txt`` or ``Comments.txt`` in case of a TXT export.
-
-    Parameters
-    ----------
-    reader:
-        Archive reader used to load JSON or TXT files from the DDP zip.
-    errors:
-        Mutable counter that accumulates error type counts encountered during
-        extraction.  Updated in-place.
-    validation:
-        Validation results for the extracted data used to determine ddp type and language.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: ``Date``, ``Comment``, ``Photo``, ``Url``.
-        Empty DataFrame when the data is absent or parsing fails.
-
-    Table documentation::
-
-        {
-          "summary": "Each row represents one comment the participant left on a TikTok video.",
-          "source_file": "user_data_tiktok.json, user_data.json, Comments.txt or Reacties.txt",
-          "columns": {
-            "Date": "Timestamp of when the comment was posted.",
-            "Comment": "Text of the comment.",
-            "Photo": "Photo associated with the comment, if any.",
-            "Url": "URL of the video the comment was posted on."
-          }
-        }
-
-    Table config::
-
-        {
-          "id": "tiktok_comments",
-          "title": {"en": "Your comments", "nl": "Je reacties"},
-          "description": {
-            "en": "Comments you have left on TikTok videos.",
-            "nl": "Reacties die je hebt achtergelaten op TikTok-video's."
-          },
-          "headers": {
-            "Date": {"en": "Date", "nl": "Datum en tijd"},
-            "Comment": {"en": "Comment", "nl": "Reactie"},
-            "Photo": {"en": "Photo", "nl": "Foto"},
-            "Url": {"en": "Url", "nl": "Url"}
-          },
-          "visualizations": [
-            {
-              "title": {
-                "en": "Most common words in your comments",
-                "nl": "Meest voorkomende woorden in je reacties"
-              },
-              "type": "wordcloud",
-              "textColumn": "Comment",
-              "tokenize": true
-            }
-          ]
-        }
-    """
-    out = pd.DataFrame()
-    if validation.current_ddp_category.ddp_filetype == DDPFiletype.JSON:
-        data = _load_user_data(reader)
-        out = pd.DataFrame()
-        try:
-            items = _get(data, "Comment", "Comments", "CommentsList")
-            if not isinstance(items, list):
-                return out
-        except Exception as e:
-            logger.error("Exception caught: %s", e)
-            errors[type(e).__name__] += 1
-            return out
-    elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
-        if validation.current_ddp_category.language == Language.NL:
-            data = reader.raw("Reacties.txt")
-        elif validation.current_ddp_category.language == Language.EN:
-            data = reader.raw("Comments.txt")
-        else:
-            return out
-        if not data.found:
-            return out    
-        try:
-            items = _parse_tiktok_txt(data.data)
-            if not isinstance(items, list):
-                # When only one record is present, this is not automatically recognized as a list of records.
-                # Therefor the returned dict needs to be stored in a list to proceed.
-                if isinstance(items, dict):
-                    items = [items]
-                else:
-                    return out
-        except Exception as e:
-            logger.error("Exception caught: %s", e)
-            errors[type(e).__name__] += 1
-            return out
-    else:
-        return out
-    try:
-        rows = [
-            (
-                _item_get(item, "Date", "Datum"),
-                _item_get(item, "Comment", "Reactie"),
-                _item_get(item, "Photo", "Foto"),
-                _item_get(item, "Url"),
-            )
-            for item in items
-        ]
-        out = pd.DataFrame(rows, columns=["Date", "Comment", "Photo", "Url"])  # pyright: ignore
-        out = out.sort_values("Date", ascending=False)
-    except Exception as e:
-        logger.error("Exception caught: %s", e)
-        errors[type(e).__name__] += 1
-        return out
-    return out
-
-
 def login_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.DataFrame:
     """Extract TikTok login history.
 
@@ -1902,7 +1783,7 @@ def vouchers_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
                 _item_get(item, "VoucherId", "Voucher Id", "Voucher-ID"),
                 _item_get(item, "VoucherName", "Voucher Name", "Vouchernaam"),
                 _item_get(item, "DiscountDetails", "VoucherText", "Discount Details", "Kortingsdetails"),
-                _item_get(item, "Status", "VoucherStatus", "Voucherstatus"),
+                _item_get(item, "Status", "VoucherStatus", "Voucherstatus", "Voucher Status"),
             )
             for item in items
         ]
@@ -1938,13 +1819,15 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
 
     Table documentation::
         {
-          "summary": "Each row represents one order by the participant on TikTok.",
+          "summary": "Each row represents one product in an order by the participant on TikTok.",
           "source_file": "user_data_tiktok.json, user_data.json, Order History.txt, or Bestelgeschiedenis.txt",
           "columns": {
             "Date": "Date when the order was made.",
-            "Products": "Information about the products that were bought including product name, variation and quantity.",
-            "Total price": "Price for the full quantity of the product.",
-            "Order status": "Status of the order."
+            "Total price": "Price for the full order.",
+            "Order status": "Status of the order.",
+            "Product name": "Name of the product in the order.",
+            "Variation name": "The subtype of product in the order.",
+            "Quantity": "The quantity of the product that was ordered."
           }
         }
 
@@ -1953,14 +1836,16 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
           "id": "tiktok_order_history",
           "title": {"en": "Order history", "nl": "Bestelgeschiedenis"},
           "description": {
-            "en": "Your orders on TikTok.",
-            "nl": "Jouw bestellingen op TikTok."
+            "en": "The products you ordered on TikTok.",
+            "nl": "De producten die je hebt besteld op TikTok."
           },
           "headers": {
-            "Date": {"en": "Date", "nl": "Datum en tijd"},
-            "Products": {"en": "Products", "nl": "Producten"},
-            "Total price": {"en": "Total price", "nl": "Totale prijs",
-            "Order status": {"en": "Order status", "nl": "Bestelstatus"}}
+            "Order date": {"en": "Date", "nl": "Datum en tijd"},
+            "Total order price": {"en": "Total order price", "nl": "Totale prijs bestelling",
+            "Order status": {"en": "Order status", "nl": "Bestelstatus"}},
+            "Product name": {"en": "Product name", "nl": "Product naam"},
+            "Variation name": {"en": "Variation name", "nl": "Variatie naam"},
+            "Quantity": {"en": "Quantity", "nl": "Hoeveelheid"}
           }
         }
     """
@@ -1992,14 +1877,16 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         if not data.found:
             return out    
         try:
-            # This is a special case where the products are in a list where the name and quantity fields
-            # are preceded by '>>' while the value of the field named 'Variation name' in JSON is not
-            # preceded by anything including the field name. Here we reshape it into a list of tuples.
+            # This is a special case where the products in an order are in a nested list where the 
+            # name and quantity fields are preceded by a '>>' while the value of the field named 
+            # 'variation_name' in JSON is not preceded by anything including a field name. Here we 
+            # restructure the text into a dict like format that gets parsed to a dict, matching the 
+            # json format for further processing.
             text = data.data.read().decode("utf-8") 
             p = re.compile("name (.*) is valid")
-            text = re.sub(r"\n>>[A-Za-z]+:\n(.+)\n(.+)\n>>[A-Za-z]+:(.+)\n", r"(\1, \2, \3x), ", text)
-            text = re.sub(r":\(", r":[(", text)
-            text = re.sub(r"\), \n", r")]\n", text)
+            text = re.sub(r"\n>>([A-Za-z]+):\n(.+)\n(.+)\n>>([A-Za-z]+):(.+)\n", r"{\1:\2, Variation name:\3, \4:\5},", text)
+            text = re.sub(r":{", r":[{", text)
+            text = re.sub(r"},\n", r"}]\n", text)
             items = _parse_tiktok_txt(text.splitlines())
             if not isinstance(items, list):
                 # When only one record is present, this is not automatically recognized as a list of records.
@@ -2016,15 +1903,19 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         return out
     try:
         rows = []
-        for item in items:
-            date = _item_get(item, "order_date", "Order date", "Besteldatum")
+        for item in items:  
+            order_date = _item_get(item, "order_date", "Order date", "Besteldatum")
             products = _item_get(item, "Products", "Product information", "Productinformatie")
-            if validation.current_ddp_category.ddp_filetype == DDPFiletype.JSON and isinstance(products, list):
-                products = [f"({product.get('product_name')}, {product.get('variation_name')}, {product.get('quantity', 0)}x)" for product in products if isinstance(product, dict)]
-            price = _item_get(item, "total_price", "Total price (including shipping fee)", "Totale prijs (inclusief verzendkosten)"),
-            status = _item_get(item, "order_status", "Order status", "Bestelstatus")
-            rows.append((date, products, price, status))
-        out = pd.DataFrame(rows, columns=["Date", "Products", "Total price", "Order status"])  # pyright: ignore
+            order_price = _item_get(item, "total_price", "Total price (including shipping fee)", "Totale prijs (inclusief verzendkosten)"),
+            order_status = _item_get(item, "order_status", "Order status", "Bestelstatus")
+            if isinstance(products, list):
+                for product in products:
+                    if isinstance(product, dict):
+                        product_name = _item_get(product, 'product_name', 'Name', 'Naam')
+                        variation_name = _item_get(product, 'variation_name', 'Variation name')
+                        product_quantity = _item_get(product, 'quantity', 'Quantity', 'Hoeveelheid')
+                        rows.append((order_date, order_price, order_status, product_name, variation_name, product_quantity))
+        out = pd.DataFrame(rows, columns=["Date", "Total price", "Order status", "Product name", "Variation name", "Quantity"])  # pyright: ignore
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
@@ -2122,8 +2013,8 @@ def product_browsing_to_df(reader: ZipArchiveReader, errors: Counter, validation
         rows = [
             (
                 _item_get(item, "browsing_date", "Browsing Date", "Browsedatum"),
-                _item_get(item, "shop_name", "Product Name", "Productnaam"),
-                _item_get(item, "product_name", "Shop Name", "Naam winkel"),
+                _item_get(item, "product_name", "Product Name", "Productnaam"),
+                _item_get(item, "shop_name", "Shop Name", "Naam winkel"),
             )
             for item in items
         ]
@@ -2150,7 +2041,6 @@ EXTRACTOR_REGISTRY: dict[str, Callable[..., pd.DataFrame]] = {
     "like_list_to_df": like_list_to_df,
     "searches_to_df": searches_to_df,
     "share_history_to_df": share_history_to_df,
-    "comments_to_df": comments_to_df,
     "login_history_to_df": login_history_to_df,
     "favorite_items_to_df": favorite_items_to_df,
     "shopping_cart_to_df": shopping_cart_to_df,
