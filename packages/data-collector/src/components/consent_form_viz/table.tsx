@@ -41,6 +41,38 @@ interface Tooltip {
   y: number
 }
 
+// Character budget per cell before truncation, per viewport width (px, tailwind breakpoints).
+// Wider viewports leave room for far more text on the same ~4 lines, so they truncate much later;
+// phones stay short to keep rows readable. First matching tier wins, so keep it descending.
+const TRUNCATE_TIERS: Array<{ minWidth: number, maxChars: number }> = [
+  { minWidth: 1536, maxChars: 800 }, // 2xl
+  { minWidth: 1280, maxChars: 600 }, // xl
+  { minWidth: 1024, maxChars: 450 }, // lg
+  { minWidth: 768, maxChars: 300 }, // md
+  { minWidth: 0, maxChars: 150 } // smaller than md
+]
+
+function maxCharsForWidth (width: number): number {
+  return (TRUNCATE_TIERS.find((tier) => width >= tier.minWidth) ?? TRUNCATE_TIERS[TRUNCATE_TIERS.length - 1]).maxChars
+}
+
+// Resolved once for the whole table rather than per cell, so a resize costs a single listener
+function useMaxChars (): number {
+  const [maxChars, setMaxChars] = useState(() => maxCharsForWidth(window.innerWidth))
+
+  useEffect(() => {
+    function update (): void {
+      // setting the same value is a no-op re-render wise, so only tier changes cost anything
+      setMaxChars(maxCharsForWidth(window.innerWidth))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+
+  return maxChars
+}
+
 export const Table = ({
   table,
   show,
@@ -59,6 +91,7 @@ export const Table = ({
   const nPages = Math.ceil(table.body.rows.length / pageSize)
   const selectedLabel = selected.size.toLocaleString(locale, { useGrouping: true })
   const text = useMemo(() => getTranslations(locale), [locale])
+  const maxChars = useMaxChars()
 
   const [tooltip, setTooltip] = useState<Tooltip>({
     show: false,
@@ -152,7 +185,7 @@ export const Table = ({
 
         {item.cells.map((cell, j) => (
           <td key={j}>
-            <Cell cell={cell} search={search} cellClass={cellClass} setTooltip={setTooltip} />
+            <Cell cell={cell} search={search} cellClass={cellClass} maxChars={maxChars} setTooltip={setTooltip} />
           </td>
         ))}
       </tr>
@@ -242,23 +275,26 @@ function Cell ({
   cell,
   search,
   cellClass,
+  maxChars,
   setTooltip
 }: {
   cell: string
   search: string
   cellClass: string
+  maxChars: number
   setTooltip: Dispatch<SetStateAction<Tooltip>>
 }): JSX.Element {
   const textRef = useRef<HTMLDivElement>(null)
   const isUrl = /^https?:\/\//.test(cell)
 
-  const maxChars = 150
   const truncated = cell.length > maxChars
   const displayText = truncated ? cell.slice(0, maxChars) + '…' : cell
 
   // widen the cell enough to keep wrapped text within ~4 lines instead of growing taller;
-  // line-clamp-4 below is only a backstop for when there isn't enough horizontal room to honor this
-  const minWidthCh = Math.max(6, Math.ceil(displayText.length / 4))
+  // line-clamp-4 below is only a backstop for when there isn't enough horizontal room to honor this.
+  // Capped so the longer budgets on wide screens can't demand a column wider than the viewport —
+  // such cells simply use whatever extra width table-auto hands them.
+  const minWidthCh = Math.min(50, Math.max(6, Math.ceil(displayText.length / 4)))
 
   const searchWords = useMemo(() => {
     return [search]

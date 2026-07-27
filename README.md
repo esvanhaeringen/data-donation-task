@@ -1,5 +1,7 @@
 # The data donation task
 
+This branch is for the study of Quyang Zhao where donation of TikTok data is combined with an eye-tracking task.
+
 The data donation task (a fork of [Feldspar](https://github.com/eyra/feldspar)) is a front end that guides participants through the data donation steps, used in conjunction with Next.
 Next is a software as a service platform developed by [Eyra](https://eyra.co/) to facilitate scientific research.
 
