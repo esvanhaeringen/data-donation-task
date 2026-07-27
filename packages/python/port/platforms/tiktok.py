@@ -473,6 +473,7 @@ def activity_summary_to_df(reader: ZipArchiveReader, errors: Counter, validation
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Samenvatting van activiteit.txt")
@@ -489,6 +490,7 @@ def activity_summary_to_df(reader: ZipArchiveReader, errors: Counter, validation
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     else:
         return out
     try:
@@ -508,6 +510,7 @@ def activity_summary_to_df(reader: ZipArchiveReader, errors: Counter, validation
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -580,6 +583,7 @@ def ad_link_history_to_df(reader: ZipArchiveReader, errors: Counter, validation)
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Geschiedenis van advertentielinks.txt")
@@ -602,8 +606,9 @@ def ad_link_history_to_df(reader: ZipArchiveReader, errors: Counter, validation)
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     else:
-        return out    
+        return out
     try:
         rows = [(_item_get(item, "CreateTime", "Create Date", "Aanmaakdatum"), _item_get(item, "AdLink", "Ad Link", "Advertentielink"), _item_get(item, "AdTitle","Ad Title", "Advertentietitel")) for item in items]
         out = pd.DataFrame(rows, columns=["Date", "Link", "Title"])  # pyright: ignore
@@ -611,6 +616,7 @@ def ad_link_history_to_df(reader: ZipArchiveReader, errors: Counter, validation)
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -682,6 +688,7 @@ def settings_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Instellingen.txt")
@@ -698,6 +705,7 @@ def settings_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     else:
         return out
     try:
@@ -722,6 +730,7 @@ def settings_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -789,6 +798,7 @@ def watch_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Kijkgeschiedenis.txt")
@@ -811,8 +821,9 @@ def watch_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     else:
-        return out    
+        return out
     try:
         rows = [(_item_get(item, "Date", "Datum"), _item_get(item, "Link")) for item in items]
         out = pd.DataFrame(rows, columns=["Date", "Link"])  # pyright: ignore
@@ -820,6 +831,7 @@ def watch_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -886,6 +898,7 @@ def favorite_videos_to_df(reader: ZipArchiveReader, errors: Counter, validation)
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Favoriete video's.txt")
@@ -909,6 +922,9 @@ def favorite_videos_to_df(reader: ZipArchiveReader, errors: Counter, validation)
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [(_item_get(item, "Date", "Datum"), _item_get(item, "Link")) for item in items]
         out = pd.DataFrame(rows, columns=["Date", "Link"])  # pyright: ignore
@@ -916,6 +932,7 @@ def favorite_videos_to_df(reader: ZipArchiveReader, errors: Counter, validation)
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -981,6 +998,7 @@ def following_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Volgend.txt")
@@ -1002,6 +1020,9 @@ def following_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [(_item_get(item, "Date", "Datum"), _item_get(item, "UserName", "User Name", "Username", "Gebruikersnaam")) for item in items]
         out = pd.DataFrame(rows, columns=["Date", "UserName"])  # pyright: ignore
@@ -1009,6 +1030,7 @@ def following_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1074,6 +1096,7 @@ def like_list_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:  
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Likelijst.txt")
@@ -1095,6 +1118,9 @@ def like_list_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [(_item_get(item, "Date", "Datum"), _item_get(item, "Link")) for item in items]
         out = pd.DataFrame(rows, columns=["Date", "Link"])  # pyright: ignore
@@ -1102,6 +1128,7 @@ def like_list_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1168,6 +1195,7 @@ def searches_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Zoekopdrachten.txt")
@@ -1189,6 +1217,9 @@ def searches_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:       
         rows = [(_item_get(item, "Date","Datum"), _item_get(item, "SearchTerm", "Search Term", "Zoekterm")) for item in items]
         out = pd.DataFrame(rows, columns=["Date", "SearchTerm"])  # pyright: ignore
@@ -1196,6 +1227,7 @@ def searches_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1267,6 +1299,7 @@ def share_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Geschiedenis delen.txt")
@@ -1288,6 +1321,9 @@ def share_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [
             (
@@ -1303,6 +1339,7 @@ def share_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1380,6 +1417,7 @@ def comments_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Reacties.txt")
@@ -1401,6 +1439,9 @@ def comments_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [
             (
@@ -1416,6 +1457,7 @@ def comments_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1487,6 +1529,7 @@ def login_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Inloggeschiedenis.txt")
@@ -1508,6 +1551,9 @@ def login_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [
             (
@@ -1524,6 +1570,7 @@ def login_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1592,6 +1639,7 @@ def favorite_items_to_df(reader: ZipArchiveReader, errors: Counter, validation) 
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Favoriet item.txt")
@@ -1621,6 +1669,9 @@ def favorite_items_to_df(reader: ZipArchiveReader, errors: Counter, validation) 
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [
             (
@@ -1634,6 +1685,7 @@ def favorite_items_to_df(reader: ZipArchiveReader, errors: Counter, validation) 
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1703,6 +1755,7 @@ def shopping_cart_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Winkelwagenlijst.txt")
@@ -1729,6 +1782,9 @@ def shopping_cart_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [
             (
@@ -1743,6 +1799,7 @@ def shopping_cart_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1813,6 +1870,7 @@ def vouchers_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Vouchers.txt")
@@ -1834,6 +1892,9 @@ def vouchers_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
+    else:
+        return out
     try:
         rows = [
             (
@@ -1849,6 +1910,7 @@ def vouchers_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
@@ -1938,7 +2000,6 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
             text = re.sub(r"\n>>[A-Za-z]+:\n(.+)\n(.+)\n>>[A-Za-z]+:(.+)\n", r"(\1, \2, \3x), ", text)
             text = re.sub(r":\(", r":[(", text)
             text = re.sub(r"\), \n", r")]\n", text)
-            logger.error("Exception caught: %s", text)
             items = _parse_tiktok_txt(text.splitlines())
             if not isinstance(items, list):
                 # When only one record is present, this is not automatically recognized as a list of records.
@@ -2035,6 +2096,7 @@ def product_browsing_to_df(reader: ZipArchiveReader, errors: Counter, validation
         except Exception as e:
             logger.error("Exception caught: %s", e)
             errors[type(e).__name__] += 1
+            return out
     elif validation.current_ddp_category.ddp_filetype == DDPFiletype.TXT:
         if validation.current_ddp_category.language == Language.NL:
             data = reader.raw("Geschiedenis van bladeren door producten.txt")
@@ -2069,6 +2131,7 @@ def product_browsing_to_df(reader: ZipArchiveReader, errors: Counter, validation
     except Exception as e:
         logger.error("Exception caught: %s", e)
         errors[type(e).__name__] += 1
+        return out
     return out
 
 
