@@ -1784,7 +1784,6 @@ def vouchers_to_df(reader: ZipArchiveReader, errors: Counter, validation) -> pd.
                 _item_get(item, "VoucherName", "Voucher Name", "Vouchernaam"),
                 _item_get(item, "DiscountDetails", "VoucherText", "Discount Details", "Kortingsdetails"),
                 _item_get(item, "Status", "VoucherStatus", "Voucherstatus", "Voucher Status"),
-                _item_get(item, "Status", "VoucherStatus", "Voucherstatus", "Voucher Status"),
             )
             for item in items
         ]
@@ -1821,7 +1820,6 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
     Table documentation::
         {
           "summary": "Each row represents one product in an order by the participant on TikTok.",
-          "summary": "Each row represents one product in an order by the participant on TikTok.",
           "source_file": "user_data_tiktok.json, user_data.json, Order History.txt, or Bestelgeschiedenis.txt",
           "columns": {
             "Order date": "Date when the order was made.",
@@ -1838,8 +1836,6 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
           "id": "tiktok_order_history",
           "title": {"en": "Order history", "nl": "Bestelgeschiedenis"},
           "description": {
-            "en": "The products you ordered on TikTok.",
-            "nl": "De producten die je hebt besteld op TikTok."
             "en": "The products you ordered on TikTok.",
             "nl": "De producten die je hebt besteld op TikTok."
           },
@@ -1886,16 +1882,7 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
             # 'variation_name' in JSON is not preceded by anything including a field name. Here we 
             # restructure the text into a dict like format that gets parsed to a dict, matching the 
             # json format for further processing.
-            # This is a special case where the products in an order are in a nested list where the 
-            # name and quantity fields are preceded by a '>>' while the value of the field named 
-            # 'variation_name' in JSON is not preceded by anything including a field name. Here we 
-            # restructure the text into a dict like format that gets parsed to a dict, matching the 
-            # json format for further processing.
             text = data.data.read().decode("utf-8") 
-            p = re.compile("name (.*) is valid")
-            text = re.sub(r"\n>>([A-Za-z]+):\n(.+)\n(.+)\n>>([A-Za-z]+):(.+)\n", r"{\1:\2, Variation name:\3, \4:\5},", text)
-            text = re.sub(r":{", r":[{", text)
-            text = re.sub(r"},\n", r"}]\n", text)
             text = re.sub(r"\n>>([A-Za-z]+):\n(.+)\n(.+)\n>>([A-Za-z]+):(.+)\n", r"{\1:\2, Variation name:\3, \4:\5},", text)
             text = re.sub(r":{", r":[{", text)
             text = re.sub(r"},\n", r"}]\n", text)
@@ -1915,8 +1902,6 @@ def order_history_to_df(reader: ZipArchiveReader, errors: Counter, validation) -
         return out
     try:
         rows = []
-        for item in items:  
-            order_date = _item_get(item, "order_date", "Order date", "Besteldatum")
         for item in items:  
             order_date = _item_get(item, "order_date", "Order date", "Besteldatum")
             products = _item_get(item, "Products", "Product information", "Productinformatie")
@@ -2027,8 +2012,6 @@ def product_browsing_to_df(reader: ZipArchiveReader, errors: Counter, validation
         rows = [
             (
                 _item_get(item, "browsing_date", "Browsing Date", "Browsedatum"),
-                _item_get(item, "product_name", "Product Name", "Productnaam"),
-                _item_get(item, "shop_name", "Shop Name", "Naam winkel"),
                 _item_get(item, "product_name", "Product Name", "Productnaam"),
                 _item_get(item, "shop_name", "Shop Name", "Naam winkel"),
             )
